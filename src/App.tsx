@@ -24,11 +24,44 @@ export default function App() {
   const fetchData = async () => {
     try {
       const res = await fetch('/api/portfolio');
+      if (!res.ok) throw new Error('Failed to fetch');
       const json = await res.json();
       setData(json);
       setLoading(false);
     } catch (err) {
       console.error("Failed to fetch data", err);
+      // Fallback to minimal data if API fails (useful for static previews)
+      const fallbackData: PortfolioData = {
+        settings: {
+          name: 'Sabbir Sakib',
+          designation: 'Motion Designer & Video Editor',
+          tagline: 'Crafting Motion. Telling Stories.',
+          about_me: 'A passionate motion designer and video editor...',
+          email: 'sakibulislamsbmc@gmail.com',
+          whatsapp: '+8801345417317',
+          primary_color: '#4285f4',
+          youtube_url: 'https://www.youtube.com/embed/7AuNdV_JSlM',
+          about_image_url: 'https://picsum.photos/seed/sabbir/800/1000',
+          media_type: 'image',
+          media_width: '1080',
+          media_height: '1080',
+          aspect_ratio: '1:1',
+          about_extra_image_url: 'https://picsum.photos/seed/extra/1200/600',
+        },
+        skills: [],
+        experience: [],
+        education: [],
+        courses: [],
+        projects: [],
+        social: [],
+        community_stats: {
+          students: '0',
+          projects: '0',
+          discussions: '0',
+          likes: '0',
+        }
+      };
+      setData(fallbackData);
       setLoading(false);
     }
   };

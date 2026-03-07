@@ -6,7 +6,22 @@ import fs from "fs";
 
 import multer from "multer";
 
-const db = new Database("portfolio.db");
+let db: any;
+try {
+  const dbPath = process.env.NODE_ENV === 'production' && process.env.VERCEL ? path.join('/tmp', 'portfolio.db') : "portfolio.db";
+  db = new Database(dbPath);
+} catch (e) {
+  console.error("Failed to open database", e);
+  // Mock DB for Vercel if better-sqlite3 fails
+  db = {
+    exec: () => {},
+    prepare: () => ({
+      run: () => ({}),
+      all: () => [],
+      get: () => null,
+    }),
+  };
+}
 
 // Initialize database
 db.exec(`
@@ -185,7 +200,6 @@ const seedData = () => {
 };
 seedData();
 
-// Student Auth Tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS students (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -197,42 +211,42 @@ db.exec(`
   );
 `);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = 3000;
 
-  app.use(express.json());
+app.use(express.json());
 
-  // Configure multer for file uploads
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      const uploadDir = path.resolve(process.cwd(), "uploads");
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, uniqueSuffix + path.extname(file.originalname));
-    },
-  });
-  const upload = multer({ storage });
-
-  // Upload endpoint
-  app.post("/api/upload", upload.single("image"), (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.resolve(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
-    const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({ url: fileUrl });
-  });
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+const upload = multer({ storage });
 
-  // Serve uploads statically
-  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+// Upload endpoint
+app.post("/api/upload", upload.single("image"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  const fileUrl = `/uploads/${req.file.filename}`;
+  res.json({ url: fileUrl });
+});
 
-  // API Routes
-  app.get("/api/portfolio", (req, res) => {
+// Serve uploads statically
+app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+
+// API Routes
+app.get("/api/portfolio", (req, res) => {
+  try {
     const settingsRows = db.prepare("SELECT * FROM settings").all() as any[];
     const skills = db.prepare("SELECT * FROM skills").all();
     const experience = db.prepare("SELECT * FROM experience").all();
@@ -260,7 +274,15 @@ async function startServer() {
       enrollments: db.prepare("SELECT * FROM enrollments").all()
     };
     res.json(portfolioData);
-  });
+  } catch (e) {
+    console.error("API Error", e);
+    // Return minimal data if DB fails
+    res.json({
+      settings: { name: "Sabbir Sakib", designation: "Motion Designer", tagline: "Crafting Motion" },
+      skills: [], experience: [], education: [], courses: [], projects: [], social: [], community_stats: {}
+    });
+  }
+});
 
   app.post("/api/projects", (req, res) => {
     const { projects } = req.body;
@@ -439,28 +461,64 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, "dist")));
-    app.get("*", (req, res) => {
-      res.sendFile(path.resolve(__dirname, "dist", "index.html"));
-    });
+    const distPath = path.resolve(process.cwd(), "dist");
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.resolve(distPath, "index.html"));
+      });
+    }
   }
 
   // Migration: Add about_extra_image_url if not exists
-  const hasExtraImage = db.prepare("SELECT * FROM settings WHERE key = 'about_extra_image_url'").get();
-  if (!hasExtraImage) {
-    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('about_extra_image_url', 'https://picsum.photos/seed/extra/1200/600');
+  try {
+    const hasExtraImage = db.prepare("SELECT * FROM settings WHERE key = 'about_extra_image_url'").get();
+    if (!hasExtraImage) {
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('about_extra_image_url', 'https://picsum.photos/seed/extra/1200/600');
+    }
+  } catch (e) {
+    console.error("Migration error", e);
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+// Vite middleware for development
+async function setupVite() {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.resolve(process.cwd(), "dist");
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.resolve(distPath, "index.html"));
+      });
+    }
+  }
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  setupVite().then(() => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  });
+} else {
+  // On Vercel, we don't need to setup Vite middleware
+  // but we might still want to serve static files if needed
+  const distPath = path.resolve(process.cwd(), "dist");
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+  }
+}
+
+export default app;
