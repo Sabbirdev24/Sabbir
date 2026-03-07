@@ -22,9 +22,57 @@ import {
   Menu,
   X,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Image as ImageIcon
 } from 'lucide-react';
 import { PortfolioData, Skill, Experience, SocialLink, Course } from '../types';
+
+const ImageUpload = ({ onUpload, currentUrl }: { onUpload: (url: string) => void, currentUrl?: string }) => {
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.url) {
+        onUpload(data.url);
+      }
+    } catch (err) {
+      console.error('Upload failed', err);
+      alert('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-4 mt-2">
+      {currentUrl && (
+        <div className="relative group">
+          <img src={currentUrl} alt="Preview" className="w-12 h-12 object-cover rounded-lg border border-slate-200" />
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+            <ImageIcon size={14} className="text-white" />
+          </div>
+        </div>
+      )}
+      <label className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg cursor-pointer transition-all text-sm font-bold">
+        <Plus size={16} />
+        {uploading ? 'Uploading...' : 'Upload Image'}
+        <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} disabled={uploading} />
+      </label>
+    </div>
+  );
+};
 
 interface AdminDashboardProps {
   data: PortfolioData;
@@ -221,6 +269,19 @@ export default function AdminDashboard({ data, onUpdate, onExit }: AdminDashboar
                   />
                 </div>
               </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Profile Image (Hero & About Me)</label>
+                <input 
+                  type="text" 
+                  value={settings.about_image_url}
+                  onChange={(e) => setSettings({...settings, about_image_url: e.target.value})}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none mb-2" 
+                />
+                <ImageUpload 
+                  currentUrl={settings.about_image_url} 
+                  onUpload={(url) => setSettings({...settings, about_image_url: url})} 
+                />
+              </div>
             </div>
           )}
 
@@ -275,6 +336,16 @@ export default function AdminDashboard({ data, onUpdate, onExit }: AdminDashboar
                         className="px-4 py-2 bg-slate-50 rounded-lg outline-none"
                       />
                     </div>
+                    <div className="flex justify-end">
+                      <ImageUpload 
+                        currentUrl={project.thumbnail}
+                        onUpload={(url) => {
+                          const newProjects = [...projects];
+                          newProjects[i].thumbnail = url;
+                          setProjects(newProjects);
+                        }}
+                      />
+                    </div>
                     <input 
                       type="text" 
                       value={project.video_url || ''}
@@ -321,7 +392,11 @@ export default function AdminDashboard({ data, onUpdate, onExit }: AdminDashboar
                     type="text" 
                     value={settings.about_extra_image_url || ''}
                     onChange={(e) => setSettings({...settings, about_extra_image_url: e.target.value})}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none mb-2" 
+                  />
+                  <ImageUpload 
+                    currentUrl={settings.about_extra_image_url}
+                    onUpload={(url) => setSettings({...settings, about_extra_image_url: url})}
                   />
                 </div>
               </div>
@@ -470,6 +545,27 @@ export default function AdminDashboard({ data, onUpdate, onExit }: AdminDashboar
                         }}
                         placeholder="Category"
                         className="px-4 py-2 bg-slate-50 rounded-lg outline-none"
+                      />
+                    </div>
+                    <div>
+                      <input 
+                        type="text" 
+                        value={course.thumbnail}
+                        onChange={(e) => {
+                          const newCourses = [...courses];
+                          newCourses[i].thumbnail = e.target.value;
+                          setCourses(newCourses);
+                        }}
+                        placeholder="Thumbnail URL"
+                        className="w-full px-4 py-2 bg-slate-50 rounded-lg outline-none mb-2"
+                      />
+                      <ImageUpload 
+                        currentUrl={course.thumbnail}
+                        onUpload={(url) => {
+                          const newCourses = [...courses];
+                          newCourses[i].thumbnail = url;
+                          setCourses(newCourses);
+                        }}
                       />
                     </div>
                     <textarea 

@@ -4,6 +4,8 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 
+import multer from "multer";
+
 const db = new Database("portfolio.db");
 
 // Initialize database
@@ -201,6 +203,34 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Configure multer for file uploads
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadDir = path.resolve(process.cwd(), "uploads");
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, uniqueSuffix + path.extname(file.originalname));
+    },
+  });
+  const upload = multer({ storage });
+
+  // Upload endpoint
+  app.post("/api/upload", upload.single("image"), (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: fileUrl });
+  });
+
+  // Serve uploads statically
+  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+
   // API Routes
   app.get("/api/portfolio", (req, res) => {
     const settingsRows = db.prepare("SELECT * FROM settings").all() as any[];
@@ -395,8 +425,8 @@ async function startServer() {
   app.post("/api/courses", (req, res) => {
     const { courses } = req.body;
     db.prepare("DELETE FROM courses").run();
-    const insert = db.prepare("INSERT INTO courses (name, provider, year) VALUES (?, ?, ?)");
-    courses.forEach((c: any) => insert.run(c.name, c.provider, c.year));
+    const insert = db.prepare("INSERT INTO courses (title, description, price, instructor, thumbnail, duration, lessons, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    courses.forEach((c: any) => insert.run(c.title, c.description, c.price, c.instructor, c.thumbnail, c.duration, c.lessons, c.category));
     res.json({ success: true });
   });
 
